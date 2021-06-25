@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 def parse() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--root_folder', type=str, required=True)
+    parser.add_argument('--root_folder', type=str, default='./Dataset')
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-5)
