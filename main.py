@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import models
 
 from utils.dataset import AwASet
-from utils.train import train, test
+from utils.train import train, test, train_concept
 
 
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -60,14 +60,21 @@ if __name__ == '__main__':
     trainloader = DataLoader(trainset, batch_size=args.batch_size, num_workers=num_workers, shuffle=True)
     testloader = DataLoader(testset, batch_size=args.batch_size, num_workers=num_workers, shuffle=False)
 
-    net = models.vgg16(pretrained=True)
-    net.fc = nn.Linear(1000, 10)
+    # net = models.vgg16(pretrained=True)
+    # net.classifier[-1] = nn.Linear(4096, 10)
 
-    net = net.to(args.device)
+    # net = net.to(args.device)
 
-    optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-    loss_func = nn.CrossEntropyLoss()
+    # optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+    # loss_func = nn.CrossEntropyLoss()
 
-    train(args, trainloader, testloader, net, optim, loss_func)
+    # train(args, trainloader, testloader, net, optim, loss_func)
 
-    test(args, testloader, net, loss_func)
+    # test(args, testloader, net, loss_func)
+
+    # train concept
+    net = torch.load('./checkpoint/vgg16_10.pt')
+
+    criterion = nn.CrossEntropyLoss()
+
+    train_concept(args, net, trainloader, testloader, criterion, num_concepts=150)
