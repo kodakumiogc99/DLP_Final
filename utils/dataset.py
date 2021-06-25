@@ -30,20 +30,22 @@ def eval_trans(img):
 
 def convert(name):
     animal = {
-        'antelope',
-        'cow',
-        'elephant',
-        'lion',
-        'squirrel',
-        'collie',
-        'deer',
-        'giraffe',
-        'rabbit',
-        'zebra'
+        'antelope': 0,
+        'cow': 1,
+        'elephant': 2,
+        'lion': 3,
+        'squirrel': 4,
+        'collie': 5,
+        'deer': 6,
+        'giraffe': 7,
+        'rabbit': 8,
+        'zebra': 9
     }
-    for i, n in enumerate(animal):
-        if(name == n):
-            return i
+
+    if name in animal:
+        return animal[name]
+
+    return -1
 
 
 def AwAData(file: str):
@@ -53,8 +55,11 @@ def AwAData(file: str):
 
     for d in directory:
         for img in glob.glob(f'{d}/*.jpg'):
-            img_list.append(img)
-            label_list.append(convert(os.path.basename(d)))
+            label = convert(os.path.basename(d))
+
+            if label != -1:
+                img_list.append(img)
+                label_list.append(label)
 
     return img_list, torch.LongTensor(label_list)
 
@@ -68,8 +73,8 @@ class AwASet(Dataset):
         return len(self.img_list)
 
     def __getitem__(self, index):
-
         img = Image.open(f'{self.img_list[index]}').convert('RGB')
+
         if self.train:
             img = train_trans(img)
         else:
@@ -81,5 +86,4 @@ class AwASet(Dataset):
 
 
 if __name__ == '__main__':
-
     AwAData('../dataset')
