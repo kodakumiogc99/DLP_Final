@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, random_split
 from torchvision import models
@@ -26,6 +27,8 @@ def parse() -> argparse.Namespace:
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--checkpoint', type=str, default='checkpoint')
     parser.add_argument('--model', type=str, default='vgg16')
+    parser.add_argument('--load_target', type=str, default=None)
+    parser.add_argument('--train_target', action='store_true')
 
     args = parser.parse_args()
 
@@ -63,13 +66,17 @@ if __name__ == '__main__':
     testloader = DataLoader(testset, batch_size=args.batch_size, num_workers=num_workers, shuffle=False)
 
     net = models.vgg16(pretrained=True)
-    net.fc = nn.Linear(1000, 10)
+    net.classifier[-1] = nn.Linear(4096, 10)
+
+    if args.load_target:
+        net = torch.load(args.load_target)
 
     net = net.to(args.device)
 
-    optim = torch.optim.Adam(net.parameters(), lr=args.lr)
+    optimizer = optim.Adam(net.parameters(), lr=args.lr)
     loss_func = nn.CrossEntropyLoss()
 
-    train(args, trainloader, testloader, net, optim, loss_func)
+    if args.train_target:
+        train(args, trainloader, testloader, net, optimizer, loss_func)
 
     test(args, testloader, net, loss_func)
