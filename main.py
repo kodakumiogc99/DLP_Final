@@ -56,6 +56,8 @@ if __name__ == '__main__':
     ratio = int(len(trainset) * 0.9)
     trainset, testset = random_split(trainset, (ratio, len(trainset) - ratio))
 
+    testset.dataset.__setattr__('train', False)
+
     num_workers = len(os.sched_getaffinity(0))
     trainloader = DataLoader(trainset, batch_size=args.batch_size, num_workers=num_workers, shuffle=True)
     testloader = DataLoader(testset, batch_size=args.batch_size, num_workers=num_workers, shuffle=False)
