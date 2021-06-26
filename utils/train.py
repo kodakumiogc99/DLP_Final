@@ -4,6 +4,7 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.models import VGG
 
@@ -87,19 +88,29 @@ def train_concept(args: argparse.Namespace, net: VGG, train_loader: DataLoader, 
         paramter.requires_grad = False
 
     latent_dim = 512
-    v = nn.Linear(latent_dim, num_concepts)
-    g = nn.Linear(num_concepts, latent_dim)
+
+    v = nn.Linear(latent_dim, num_concepts, bias=False)
+
+    g = nn.Sequential(
+        nn.Linear(num_concepts, latent_dim * 2, bias=False),
+        nn.ReLU(inplace=True),
+        nn.Linear(latent_dim * 2, latent_dim, bias=False),
+        nn.ReLU(inplace=True)
+    )
 
     v = v.to(args.device)
     g = g.to(args.device)
 
-    v_optimizer = optim.Adam(v.parameters(), lr=1e-5)
-    g_optimizer = optim.Adam(g.parameters(), lr=1e-5)
+    v_optimizer = optim.Adam(v.parameters(), lr=1e-3)
+    g_optimizer = optim.Adam(g.parameters(), lr=1e-3)
 
-    epochs = 1
+    epochs = 50
     epoch_length = len(str(epochs))
 
     for epoch in range(epochs):
+        v.train()
+        g.train()
+
         loss = 0.0
         accuracy = 0.0
 
@@ -116,8 +127,19 @@ def train_concept(args: argparse.Namespace, net: VGG, train_loader: DataLoader, 
             g_optimizer.zero_grad()
 
             latents = latents.reshape(latents.shape[0], latents.shape[1], -1).transpose(1, 2)
+            latents = latents / torch.norm(latents, dim=2, keepdim=True)
+
+            v.weight.data = v.weight.data.div(torch.norm(v.weight, p=2, dim=1, keepdim=True).data)
 
             latents = v(latents)
+            latents = F.relu(latents)
+
+            lambda_1 = 10.0
+            lambda_2 = 10.0
+            R_1 = lambda_1 * torch.mean(latents)
+            R_2 = lambda_2 * torch.sum(2.0 * torch.tril(torch.matmul(v.weight, v.weight.T), diagonal=-1)) / (v.weight.shape[0] * (v.weight.shape[0] - 1))
+            regularization = R_1 - R_2
+
             latents = g(latents)
 
             latents = latents.transpose(1, 2).reshape(*origin_shape)
@@ -125,7 +147,7 @@ def train_concept(args: argparse.Namespace, net: VGG, train_loader: DataLoader, 
             latents = torch.flatten(latents, start_dim=1)
             output = h(latents)
 
-            temp_loss = criterion(output, label)
+            temp_loss = criterion(output, label) - regularization
             loss += temp_loss.item()
 
             temp_loss.backward()
@@ -142,7 +164,8 @@ def train_concept(args: argparse.Namespace, net: VGG, train_loader: DataLoader, 
 
             print(f'\r{" " * last_length}', end='')
 
-            message = f'Epochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{progress_bar:<20}] {current_progress:>6.2f}%, loss: {temp_loss.item():.3f}, accuracy: {temp_accuracy:.3f}'
+            message = f'Epochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{progress_bar:<20}] {current_progress:>6.2f}%, '
+            message += f'loss: {temp_loss.item():.3f}, R_1: {R_1.item():.3f}, R_2: {R_2.item():.3f}, accuracy: {temp_accuracy:.3f}'
             last_length = len(message) + 1
 
             print(f'\r{message}', end='')
@@ -153,70 +176,87 @@ def train_concept(args: argparse.Namespace, net: VGG, train_loader: DataLoader, 
         print(f'\r{" " * last_length}', end='')
         print(f'\rEpochs: {(epoch + 1):>{epoch_length}} / {epochs}, [{"=" * 20}], loss: {loss:.3f}, accuracy: {accuracy:.3f}')
 
-    with torch.no_grad():
-        phi.eval()
-        h.eval()
+        test_result = test_concept(args, phi, h, v, g, test_loader, criterion)
 
-        v.eval()
-        g.eval()
+        if test_result['accuracy'] > 0.97:
+            print('higher than origin model')
 
-        loss = 0.0
-        accuracy = 0.0
-
-        last_length = 0
-        for i, (image, label) in enumerate(test_loader):
-            image = image.to(args.device)
-            label = label.to(args.device)
-
-            latents = phi(image)
-            origin_shape = latents.shape
-
-            latents = latents.reshape(latents.shape[0], latents.shape[1], -1).transpose(1, 2)
-
-            latents = v(latents)
-            latents = g(latents)
-
-            latents = latents.transpose(1, 2).reshape(*origin_shape)
-
-            latents = torch.flatten(latents, start_dim=1)
-            output = h(latents)
-
-            temp_loss = criterion(output, label)
-            loss += temp_loss.item()
-
-            _, y_hat = output.max(dim=1)
-            temp_accuracy = torch.sum(y_hat == label) / label.shape[0]
-            accuracy += temp_accuracy
-
-            # progress bar
-            current_progress = (i + 1) / len(test_loader) * 100
-            progress_bar = '=' * int((i + 1) * (20 / len(test_loader)))
-
-            print(f'\r{" " * last_length}', end='')
-
-            message = f'Test, [{progress_bar:<20}] {current_progress:>6.2f}%, loss: {temp_loss.item():.3f}, accuracy: {temp_accuracy:.3f}'
-            last_length = len(message) + 1
-
-            print(f'\r{message}', end='')
-
-        loss /= len(test_loader)
-        accuracy /= len(test_loader)
-
-        print(f'\r{" " * last_length}', end='')
-        print(f'\rTest, [{"=" * 20}], loss: {loss:.3f}, accuracy: {accuracy:.3f}')
+            break
 
     with torch.no_grad():
-        # v.weight = nn.Parameter(v.weight / torch.norm(v.weight, dim=1).reshape(-1, 1))
-        for i in range(v.weight.shape[0]):
-            for j in range(v.weight.shape[0]):
-                if i == j:
-                    continue
+        concepts = v.weight / torch.norm(v.weight, dim=1).reshape(-1, 1)
 
-                value = torch.dot(v.weight[i], v.weight[j])
-                print(value)
+        result = torch.tril(torch.matmul(concepts, concepts.T), diagonal=-1)
 
-                if value > 0.95:
-                    print(i, j)
+        print(result)
+        print(torch.sum(result > 0.95, dim=1))
 
     torch.save(v, 'checkpoint/v.pt')
     torch.save(g, 'checkpoint/g.pt')
+
+
+@torch.no_grad()
+def test_concept(args, phi, h, v, g, test_loader: DataLoader, criterion: Callable) -> dict:
+    phi.eval()
+    h.eval()
+
+    v.eval()
+    g.eval()
+
+    loss = 0.0
+    accuracy = 0.0
+
+    last_length = 0
+    for i, (image, label) in enumerate(test_loader):
+        image = image.to(args.device)
+        label = label.to(args.device)
+
+        latents = phi(image)
+        origin_shape = latents.shape
+
+        latents = latents.reshape(latents.shape[0], latents.shape[1], -1).transpose(1, 2)
+        latents = latents / torch.norm(latents, dim=2, keepdim=True)
+
+        v.weight.data = v.weight.data.div(torch.norm(v.weight, p=2, dim=1, keepdim=True).data)
+
+        latents = v(latents)
+        latents = F.relu(latents)
+
+        lambda_1 = 10.0
+        lambda_2 = 10.0
+        R_1 = lambda_1 * torch.mean(latents)
+        R_2 = lambda_2 * torch.sum(2.0 * torch.tril(torch.matmul(v.weight, v.weight.T), diagonal=-1)) / (v.weight.shape[0] * (v.weight.shape[0] - 1))
+        regularization = R_1 - R_2
+
+        latents = g(latents)
+
+        latents = latents.transpose(1, 2).reshape(*origin_shape)
+
+        latents = torch.flatten(latents, start_dim=1)
+        output = h(latents)
+
+        temp_loss = criterion(output, label) - regularization
+        loss += temp_loss.item()
+
+        _, y_hat = output.max(dim=1)
+        temp_accuracy = torch.sum(y_hat == label) / label.shape[0]
+        accuracy += temp_accuracy
+
+        # progress bar
+        current_progress = (i + 1) / len(test_loader) * 100
+        progress_bar = '=' * int((i + 1) * (20 / len(test_loader)))
+
+        print(f'\r{" " * last_length}', end='')
+
+        message = f'Test, [{progress_bar:<20}] {current_progress:>6.2f}%, loss: {temp_loss.item():.3f}, accuracy: {temp_accuracy:.3f}'
+        last_length = len(message) + 1
+
+        print(f'\r{message}', end='')
+
+    loss /= len(test_loader)
+    accuracy /= len(test_loader)
+
+    print(f'\r{" " * last_length}', end='')
+    print(f'\rTest, [{"=" * 20}], loss: {loss:.3f}, accuracy: {accuracy:.3f}')
+
+    return {'loss': loss, 'accuracy': accuracy}
