@@ -5,12 +5,13 @@ import warnings
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, random_split
 from torchvision import models
 
 from utils.dataset import AwASet
-from utils.train import train, test, train_concept
+from utils.train import train, test
 
 
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -26,6 +27,8 @@ def parse() -> argparse.Namespace:
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--checkpoint', type=str, default='checkpoint')
     parser.add_argument('--model', type=str, default='vgg16')
+    parser.add_argument('--load_target', type=str, default=None)
+    parser.add_argument('--train_target', action='store_true')
 
     args = parser.parse_args()
 
@@ -56,25 +59,24 @@ if __name__ == '__main__':
     ratio = int(len(trainset) * 0.9)
     trainset, testset = random_split(trainset, (ratio, len(trainset) - ratio))
 
+    testset.dataset.__setattr__('train', False)
+
     num_workers = len(os.sched_getaffinity(0))
     trainloader = DataLoader(trainset, batch_size=args.batch_size, num_workers=num_workers, shuffle=True)
     testloader = DataLoader(testset, batch_size=args.batch_size, num_workers=num_workers, shuffle=False)
 
-    # net = models.vgg16(pretrained=True)
-    # net.classifier[-1] = nn.Linear(4096, 10)
+    net = models.vgg16(pretrained=True)
+    net.classifier[-1] = nn.Linear(4096, 10)
 
-    # net = net.to(args.device)
+    if args.load_target:
+        net = torch.load(args.load_target)
 
-    # optim = torch.optim.Adam(net.parameters(), lr=args.lr)
-    # loss_func = nn.CrossEntropyLoss()
+    net = net.to(args.device)
 
-    # train(args, trainloader, testloader, net, optim, loss_func)
+    optimizer = optim.Adam(net.parameters(), lr=args.lr)
+    loss_func = nn.CrossEntropyLoss()
 
-    # test(args, testloader, net, loss_func)
+    if args.train_target:
+        train(args, trainloader, testloader, net, optimizer, loss_func)
 
-    # train concept
-    net = torch.load('./checkpoint/vgg16_10.pt')
-
-    criterion = nn.CrossEntropyLoss()
-
-    train_concept(args, net, trainloader, testloader, criterion, num_concepts=150)
+    test(args, testloader, net, loss_func)
