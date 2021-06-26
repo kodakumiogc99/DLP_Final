@@ -66,45 +66,8 @@ def test(args, testloader, net, loss_func):
     print(f'Test, Loss: {(test_loss / len(testloader)):.3f}, Accuracy: {(test_acc / len(testloader.dataset)):.3f}')
 
 
-def train_concept(args: argparse.Namespace, net: VGG, train_loader: DataLoader, test_loader: DataLoader, criterion: Callable, num_concepts: int) -> None:
-    phi = nn.Sequential(
-        net.features,
-        net.avgpool
-    )
-
-    h = nn.Sequential(
-        net.classifier
-    )
-
-    phi = phi.to(args.device)
-    h = h.to(args.device)
-
-    phi.eval()
-    for paramter in phi.parameters():
-        paramter.requires_grad = False
-
-    h.eval()
-    for paramter in h.parameters():
-        paramter.requires_grad = False
-
-    latent_dim = 512
-
-    v = nn.Linear(latent_dim, num_concepts, bias=False)
-
-    g = nn.Sequential(
-        nn.Linear(num_concepts, latent_dim * 2, bias=False),
-        nn.ReLU(inplace=True),
-        nn.Linear(latent_dim * 2, latent_dim, bias=False),
-        nn.ReLU(inplace=True)
-    )
-
-    v = v.to(args.device)
-    g = g.to(args.device)
-
-    v_optimizer = optim.Adam(v.parameters(), lr=1e-3)
-    g_optimizer = optim.Adam(g.parameters(), lr=1e-3)
-
-    epochs = 50
+def train_concept(args: argparse.Namespace, phi, h, v, g, train_loader: DataLoader, test_loader: DataLoader, v_optimizer: optim.Optimizer, g_optimizer: optim.Optimizer, criterion: Callable) -> None:
+    epochs = args.epochs
     epoch_length = len(str(epochs))
 
     for epoch in range(epochs):
