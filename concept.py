@@ -26,6 +26,10 @@ def parse() -> argparse.Namespace:
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--checkpoint', type=str, default='checkpoint')
+    parser.add_argument('--accuracy_threshold', type=float, default=0.97)
+    parser.add_argument('--num_concepts', type=int, default=100)
+    parser.add_argument('--latent_dim', type=int, default=512)
+    parser.add_argument('--lr', type=float, default=1e-3)
     args = parser.parse_args()
 
     print('=' * 100)
@@ -83,8 +87,8 @@ if __name__ == '__main__':
     for paramter in h.parameters():
         paramter.requires_grad = False
 
-    latent_dim = 512
-    num_concepts = 500
+    latent_dim = args.latent_dim
+    num_concepts = args.num_concepts
 
     v = nn.Linear(latent_dim, num_concepts, bias=False)
 
@@ -104,8 +108,8 @@ if __name__ == '__main__':
     v = v.to(args.device)
     g = g.to(args.device)
 
-    v_optimizer = optim.Adam(v.parameters(), lr=1e-3)
-    g_optimizer = optim.Adam(g.parameters(), lr=1e-3)
+    v_optimizer = optim.Adam(v.parameters(), lr=args.lr)
+    g_optimizer = optim.Adam(g.parameters(), lr=args.lr)
 
     criterion = nn.CrossEntropyLoss()
 

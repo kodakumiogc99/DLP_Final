@@ -141,7 +141,7 @@ def train_concept(args: argparse.Namespace, phi, h, v, g, train_loader: DataLoad
 
         test_result = test_concept(args, phi, h, v, g, test_loader, criterion)
 
-        if test_result['accuracy'] > 0.97:
+        if test_result['accuracy'] > args.accuracy_threshold:
             print('higher than origin model')
 
             break
