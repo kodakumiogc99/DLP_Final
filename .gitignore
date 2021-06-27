@@ -1,5 +1,6 @@
 __pycache__/
 checkpoint/
 Dataset/
+result_images/
 .vim/
 Pipfile*
