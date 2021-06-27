@@ -116,4 +116,4 @@ if __name__ == '__main__':
     if args.train_concept:
         train_concept(args, phi, h, v, g, train_loader, test_loader, v_optimizer, g_optimizer, criterion)
 
-    test_concept(args, phi, h, v, g, test_loader, criterion)
+    test_concept(args, phi, h, v, g, test_loader, criterion, save_result=True)
