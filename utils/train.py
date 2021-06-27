@@ -1,3 +1,5 @@
+import os
+import shutil
 import argparse
 from tqdm import tqdm
 from typing import Callable
@@ -7,6 +9,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision.models import VGG
+from torchvision.utils import make_grid, save_image
 
 
 def train(args, trainloader, testloader, net, optim, loss_func):
@@ -159,7 +162,7 @@ def train_concept(args: argparse.Namespace, phi, h, v, g, train_loader: DataLoad
 
 
 @torch.no_grad()
-def test_concept(args, phi, h, v, g, test_loader: DataLoader, criterion: Callable) -> dict:
+def test_concept(args, phi, h, v, g, test_loader: DataLoader, criterion: Callable, save_result: bool = False) -> dict:
     phi.eval()
     h.eval()
 
@@ -170,9 +173,22 @@ def test_concept(args, phi, h, v, g, test_loader: DataLoader, criterion: Callabl
     accuracy = 0.0
 
     last_length = 0
+
+    result_folder = 'result_images'
+    if save_result:
+        if os.path.exists(result_folder):
+            shutil.rmtree(result_folder)
+
+        os.mkdir(result_folder)
+
+        for i in range(10):
+            os.mkdir(f'{result_folder}/{i}')
+
     for i, (image, label) in enumerate(test_loader):
         image = image.to(args.device)
         label = label.to(args.device)
+
+        padding_image = F.pad(image, (90, 90, 90, 90), mode='constant', value=-1.0)
 
         latents = phi(image)
         origin_shape = latents.shape
@@ -190,6 +206,27 @@ def test_concept(args, phi, h, v, g, test_loader: DataLoader, criterion: Callabl
         R_1 = lambda_1 * torch.mean(latents)
         R_2 = lambda_2 * torch.sum(2.0 * torch.tril(torch.matmul(v.weight, v.weight.T), diagonal=-1)) / (v.weight.shape[0] * (v.weight.shape[0] - 1))
         regularization = R_1 - R_2
+
+        if save_result:
+            results = []
+            for batch_index in range(label.shape[0]):
+                max_index = torch.argmax(latents[batch_index])
+                index = max_index // latents[batch_index].shape[1]
+
+                row, col = index // 7, index % 7
+                concept = torch.topk(latents[batch_index, index], k=3)[1] % latents[batch_index].shape[1]
+
+                results.append({
+                    'image': padding_image[batch_index, :, (row * 32): (212 + row * 32), (col * 32): (212 + col * 32)],
+                    'concept': concept.tolist(),
+                    'label': label[batch_index]
+                })
+
+            for result in results:
+                image_index = len(os.listdir(f'{result_folder}/{result["label"]}'))
+
+                output = make_grid(result['image'], nrow=1, normalize=True)
+                save_image(output, f'{result_folder}/{result["label"]}/{image_index}_{"_".join(list(map(lambda x: str(x), result["concept"])))}.png')
 
         latents = g(latents)
 
