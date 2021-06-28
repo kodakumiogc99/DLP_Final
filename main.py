@@ -3,6 +3,8 @@ import random
 import argparse
 import warnings
 import numpy as np
+import copy
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -59,6 +61,8 @@ if __name__ == '__main__':
     ratio = int(len(trainset) * 0.9)
     trainset, testset = random_split(trainset, (ratio, len(trainset) - ratio))
 
+    testset.dataset = copy.deepcopy(trainset.dataset)
+
     testset.dataset.__setattr__('train', False)
 
     num_workers = len(os.sched_getaffinity(0))
@@ -72,6 +76,9 @@ if __name__ == '__main__':
         net = torch.load(args.load_target)
 
     net = net.to(args.device)
+
+    print(net)
+    exit(1)
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
     loss_func = nn.CrossEntropyLoss()

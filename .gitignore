@@ -4,3 +4,4 @@ Dataset/
 result_images/
 .vim/
 Pipfile*
+visualize/
