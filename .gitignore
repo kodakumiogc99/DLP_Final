@@ -5,3 +5,4 @@ result_images/
 .vim/
 Pipfile*
 visualize/
+**/*.swp
